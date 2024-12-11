@@ -3,114 +3,86 @@ package main
 import (
 	"fmt"
 	"math/rand"
-	"sort"
 	"sync"
 	"time"
 )
 
-// Структура студента
-type Student struct {
-	FullName    string
-	Faculty     string
-	Group       string
-	Gender      string
-	Exercise    string
-	Repetitions int
+// Структура продукта питания
+type FoodProduct struct {
+	Name           string
+	Price          float64
+	Manufacturer   string
+	ManufactureDate time.Time
+	ShelfLife      time.Duration
 }
 
-// Функция для генерации случайных данных студентов
-func generateStudents(size int, faculty string, exercises []string) []Student {
-	students := make([]Student, size)
+// Функция для генерации случайных данных о продуктах
+func generateFoodProducts(size int) []FoodProduct {
+	products := make([]FoodProduct, size)
 	for i := 0; i < size; i++ {
-		students[i] = Student{
-			FullName:    fmt.Sprintf("Student %d", i),
-			Faculty:     faculty,
-			Group:       fmt.Sprintf("Group %d", rand.Intn(10)),
-			Gender:      []string{"Male", "Female"}[rand.Intn(2)],
-			Exercise:    exercises[rand.Intn(len(exercises))],
-			Repetitions: rand.Intn(10000) + 1, // Увеличьте диапазон значений повторений
+		manufactureDate := time.Now().AddDate(0, 0, -rand.Intn(30)) // Продукты с датой изготовления до 30 дней назад
+		products[i] = FoodProduct{
+			Name:           fmt.Sprintf("Product %d", i),
+			Price:          float64(rand.Intn(100)) + rand.Float64(),
+			Manufacturer:   fmt.Sprintf("Manufacturer %d", rand.Intn(10)),
+			ManufactureDate: manufactureDate,
+			ShelfLife:      time.Hour * 24 * time.Duration(rand.Intn(30)), // Срок годности до 30 дней
 		}
 	}
-	return students
+	return products
 }
 
-// Функция для обработки данных (сортировка по количеству повторений)
-func processTopStudents(students []Student, faculty, exercise, gender string) []Student {
-	var filteredStudents []Student
-	for _, student := range students {
-		if student.Faculty == faculty && student.Exercise == exercise && student.Gender == gender {
-			filteredStudents = append(filteredStudents, student)
+// Функция для получения списка продуктов с истекшим сроком годности
+func expiredProducts(products []FoodProduct) []FoodProduct {
+	var expired []FoodProduct
+	for _, product := range products {
+		if time.Now().After(product.ManufactureDate.Add(product.ShelfLife)) {
+			expired = append(expired, product)
 		}
 	}
-
-	// Сортируем студентов по количеству повторений (от большего к меньшему)
-	sort.Slice(filteredStudents, func(i, j int) bool {
-		return filteredStudents[i].Repetitions > filteredStudents[j].Repetitions
-	})
-
-	// Ограничиваем результат ТОП-5
-	if len(filteredStudents) > 5 {
-		return filteredStudents[:5]
-	}
-	return filteredStudents
+	return expired
 }
 
 func main() {
 	// Параметры задачи
-	const size = 100000 // Размер массива данных
-	const faculty = "F"
-	const exercise = "Push-ups"
-	exercises := []string{"Push-ups", "Squats", "Pull-ups"}
+	const size = 100 // Размер массива данных
 
-	// Генерация случайных данных
-	students := generateStudents(size, faculty, exercises)
+	// Генерация случайных данных о продуктах
+	products := generateFoodProducts(size)
 
 	// Измерение времени без многопоточности
 	startTime := time.Now()
-	topWomen := processTopStudents(students, faculty, exercise, "Female")
-	topMen := processTopStudents(students, faculty, exercise, "Male")
+	expired := expiredProducts(products)
 	elapsedNoConcurrency := time.Since(startTime)
 
 	// Вывод результатов без многопоточности
-	fmt.Println("Top 5 Women:")
-	for _, student := range topWomen {
-		fmt.Printf("%s - %d repetitions\n", student.FullName, student.Repetitions)
-	}
-
-	fmt.Println("\nTop 5 Men:")
-	for _, student := range topMen {
-		fmt.Printf("%s - %d repetitions\n", student.FullName, student.Repetitions)
+	fmt.Println("Expired Food Products (No Concurrency):")
+	for _, product := range expired {
+		fmt.Printf("Name: %s, Price: %.2f, Manufacturer: %s, Manufacture Date: %s, Shelf Life: %d days\n",
+			product.Name, product.Price, product.Manufacturer, product.ManufactureDate.Format("2006-01-02"), int(product.ShelfLife.Hours()/24))
 	}
 
 	// Измерение времени с многопоточностью
 	startTime = time.Now()
-	var wg sync.WaitGroup //Создаем объект WaitGroup для синхронизации горутин
-	var topWomenConcurrent, topMenConcurrent []Student
+	var wg sync.WaitGroup
+	var expiredConcurrent []FoodProduct
 
-	wg.Add(2) //Указываем, что ожидаем завершения двух горутин
+	wg.Add(1) // Указываем, что ожидаем завершения одной горутины
 	go func() {
 		defer wg.Done()
-		topWomenConcurrent = processTopStudents(students, faculty, exercise, "Female")
-	}()
-	go func() {
-		defer wg.Done()
-		topMenConcurrent = processTopStudents(students, faculty, exercise, "Male")
+		expiredConcurrent = expiredProducts(products)
 	}()
 	wg.Wait()
 	elapsedWithConcurrency := time.Since(startTime)
 
 	// Вывод результатов с многопоточностью
-	fmt.Println("\nTop 5 Women (Concurrent):")
-	for _, student := range topWomenConcurrent {
-		fmt.Printf("%s - %d repetitions\n", student.FullName, student.Repetitions)
+	fmt.Println("\nExpired Food Products (With Concurrency):")
+	for _, product := range expiredConcurrent {
+		fmt.Printf("Name: %s, Price: %.2f, Manufacturer: %s, Manufacture Date: %s, Shelf Life: %d days\n",
+			product.Name, product.Price, product.Manufacturer, product.ManufactureDate.Format("2006-01-02"), int(product.ShelfLife.Hours()/24))
 	}
 
-	fmt.Println("\nTop 5 Men (Concurrent):")
-	for _, student := range topMenConcurrent {
-		fmt.Printf("%s - %d repetitions\n", student.FullName, student.Repetitions)
-	}
-
-	// Вывод времени обработки в микросекундах
+	// Вывод времени обработки
 	fmt.Printf("\nTime without concurrency: %d microseconds\n", elapsedNoConcurrency.Microseconds())
 	fmt.Printf("Time with concurrency: %d microseconds\n", elapsedWithConcurrency.Microseconds())
 }
