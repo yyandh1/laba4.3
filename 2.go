@@ -9,11 +9,11 @@ import (
 
 // Структура продукта питания
 type FoodProduct struct {
-	Name           string
-	Price          float64
-	Manufacturer   string
+	Name            string
+	Price           float64
+	Manufacturer    string
 	ManufactureDate time.Time
-	ShelfLife      time.Duration
+	ShelfLife       time.Duration
 }
 
 // Функция для генерации случайных данных о продуктах
@@ -22,9 +22,9 @@ func generateFoodProducts(size int) []FoodProduct {
 	for i := 0; i < size; i++ {
 		manufactureDate := time.Now().AddDate(0, 0, -rand.Intn(30)) // Продукты с датой изготовления до 30 дней назад
 		products[i] = FoodProduct{
-			Name:           fmt.Sprintf("Product %d", i),
-			Price:          float64(rand.Intn(100)) + rand.Float64(),
-			Manufacturer:   fmt.Sprintf("Manufacturer %d", rand.Intn(10)),
+			Name:            fmt.Sprintf("Product %d", i),
+			Price:           float64(rand.Intn(100)) + rand.Float64(),
+			Manufacturer:    fmt.Sprintf("Manufacturer %d", rand.Intn(10)),
 			ManufactureDate: manufactureDate,
 			ShelfLife:      time.Hour * 24 * time.Duration(rand.Intn(30)), // Срок годности до 30 дней
 		}
@@ -46,6 +46,7 @@ func expiredProducts(products []FoodProduct) []FoodProduct {
 func main() {
 	// Параметры задачи
 	const size = 100 // Размер массива данных
+	const numGoroutines = 5 // Количество горутин
 
 	// Генерация случайных данных о продуктах
 	products := generateFoodProducts(size)
@@ -66,13 +67,35 @@ func main() {
 	startTime = time.Now()
 	var wg sync.WaitGroup
 	var expiredConcurrent []FoodProduct
+	ch := make(chan []FoodProduct, numGoroutines)
 
-	wg.Add(1) // Указываем, что ожидаем завершения одной горутины
+	// Разделяем продукты на части и запускаем горутины
+	chunkSize := (size + numGoroutines - 1) / numGoroutines // Размер порции для каждой горутины
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			start := i * chunkSize
+			end := start + chunkSize
+			if end > size {
+				end = size
+			}
+			expiredChunk := expiredProducts(products[start:end])
+			ch <- expiredChunk // Отправляем результаты в канал
+		}(i)
+	}
+
+	// Закрываем канал после завершения всех горутин
 	go func() {
-		defer wg.Done()
-		expiredConcurrent = expiredProducts(products)
+		wg.Wait()
+		close(ch)
 	}()
-	wg.Wait()
+
+	// Собираем результаты из канала
+	for expiredChunk := range ch {
+		expiredConcurrent = append(expiredConcurrent, expiredChunk...)
+	}
+
 	elapsedWithConcurrency := time.Since(startTime)
 
 	// Вывод результатов с многопоточностью
